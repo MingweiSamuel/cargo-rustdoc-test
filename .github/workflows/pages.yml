@@ -1,0 +1,44 @@
+on:
+  push:
+  workflow_dispatch:
+name: pages
+
+jobs:
+  build:
+    name: Build pages
+    if: ${{ github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      WWW_DIR: target/doc
+    steps:
+
+    - name: Checkout sources
+      uses: actions/checkout@v2
+      with:
+        submodules: recursive
+
+    - name: Build
+      run: cargo rustdoc --bin test-bin -- --html-before-content include.html
+
+    - name: Deploy to gh-pages
+      if: ${{ github.event_name != 'pull_request' }}
+      shell: bash
+      run: |
+        git -C "$WWW_DIR" init -q
+        git -C "$WWW_DIR" remote add origin "$(git remote get-url origin)"
+        git -C "$WWW_DIR" config credential.helper "$(git config credential.helper)"
+        git -C "$WWW_DIR" config 'http.https://github.com/.extraheader' "$(git config 'http.https://github.com/.extraheader')"
+        git -C "$WWW_DIR" config core.autocrlf input
+        git -C "$WWW_DIR" config core.safecrlf false
+        git -C "$WWW_DIR" fetch origin gh-pages:gh-pages || true
+        git -C "$WWW_DIR" symbolic-ref HEAD refs/heads/gh-pages
+        git -C "$WWW_DIR" reset
+        git -C "$WWW_DIR" add -A
+        if git -C "$WWW_DIR" -c 'user.name=github-actions[bot]' -c 'user.email=41898282+github-actions[bot]@users.noreply.github.com' \
+          commit -m "Build site $(date -I) $(git rev-parse HEAD)";
+        then
+          git -C "$WWW_DIR" push -u origin gh-pages --quiet
+        else
+          echo 'No changes to commit'
+        fi
